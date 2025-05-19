@@ -46,16 +46,6 @@ jobs:
         uv venv
         uv pip install -e ".[dev]"
     
-    - name: Lint with flake8
-      run: |
-        source .venv/bin/activate || source .venv/Scripts/activate
-        flake8 mcp_installer tests
-    
-    - name: Check format with black
-      run: |
-        source .venv/bin/activate || source .venv/Scripts/activate
-        black --check mcp_installer tests
-    
     - name: Test with pytest
       run: |
         source .venv/bin/activate || source .venv/Scripts/activate

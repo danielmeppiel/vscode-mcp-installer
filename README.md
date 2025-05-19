@@ -1,6 +1,6 @@
 # vscode-mcp-installer
 
-A CLI tool to verify MCP (Model Context Protocol) servers installed in Visual Studio Code.
+A tool to verify MCP (Model Context Protocol) servers installed in Visual Studio Code.
 
 ## Setup
 

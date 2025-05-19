@@ -9,7 +9,25 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from mcp_installer.main import cli
+# Import CLI function without importing MCP server
+import sys
+import importlib.util
+from types import ModuleType
+
+def import_module_from_file(name, path):
+    """Import a module from file without importing its imports."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+# Import just the main module without triggering server imports
+main_module = import_module_from_file(
+    "mcp_installer.main", 
+    "/Users/danielmeppiel/Repos/vscode-mcp-installer/mcp_installer/main.py"
+)
+cli = main_module.cli
 
 
 def test_list_command_no_servers():

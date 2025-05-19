@@ -20,6 +20,8 @@ classifiers = [
 ]
 dependencies = [
     "click",
+    "mcp[cli]",
+    "fastmcp",
 ]
 
 [project.optional-dependencies]
