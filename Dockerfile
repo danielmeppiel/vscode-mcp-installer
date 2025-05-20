@@ -13,4 +13,7 @@ ENV PYTHONUNBUFFERED=1
 # Install package with UV (using --system flag)
 RUN uv pip install --system -e .
 
+# Create a directory for the settings file if it doesn't exist
+RUN mkdir -p /root/.config/Code/User/
+
 CMD ["uv", "run", "mcp_installer/server.py"]
