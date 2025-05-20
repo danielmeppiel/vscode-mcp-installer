@@ -111,9 +111,15 @@ class MCPRegistryClient:
         Returns:
             Dictionary mapping identifiers to their server details, or None if not found
         """
-        # First, get the full list of servers (one network call)
-        results = self.list_servers(limit=100)
-        all_servers = results.get("servers", [])
+        # First, get the full list of servers using pagination
+        all_servers = []
+        cursor = None
+        while True:
+            results = self.list_servers(limit=100, cursor=cursor)
+            all_servers.extend(results.get("servers", []))
+            cursor = results.get("next_cursor")
+            if not cursor:
+                break
         
         # Build maps for quick lookups
         id_map = {server.get("id"): server for server in all_servers}
