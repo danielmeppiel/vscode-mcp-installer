@@ -1,0 +1,5 @@
+version: "1.0"
+servers:
+  - "io.github.glips/figma-context-mcp"
+  - "io.github.geli2001/datadog-mcp-server"
+  - "io.github.mongodb-js/mongodb-mcp-server"

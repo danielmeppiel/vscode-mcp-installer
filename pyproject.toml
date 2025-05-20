@@ -23,6 +23,7 @@ dependencies = [
     "mcp[cli]",
     "fastmcp",
     "requests",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]

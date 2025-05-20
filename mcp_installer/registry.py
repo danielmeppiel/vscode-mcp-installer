@@ -101,6 +101,85 @@ class MCPRegistryClient:
                 
         return matches
 
+    def batch_search_servers(self, identifiers: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Search for multiple servers in one operation, minimizing network requests
+        
+        Args:
+            identifiers: List of server identifiers (IDs or names)
+            
+        Returns:
+            Dictionary mapping identifiers to their server details, or None if not found
+        """
+        # First, get the full list of servers using pagination
+        all_servers = []
+        cursor = None
+        while True:
+            results = self.list_servers(limit=100, cursor=cursor)
+            all_servers.extend(results.get("servers", []))
+            cursor = results.get("next_cursor")
+            if not cursor:
+                break
+        
+        # Build maps for quick lookups
+        id_map = {server.get("id"): server for server in all_servers}
+        name_map = {server.get("name"): server for server in all_servers}
+        
+        # Process all identifiers using the locally-cached data
+        server_details = {}
+        server_ids_to_fetch = []
+        
+        for identifier in identifiers:
+            # Check if identifier is an ID we already have
+            if identifier in id_map:
+                server_ids_to_fetch.append(identifier)
+                continue
+                
+            # Check if identifier is a name
+            if identifier in name_map:
+                server_ids_to_fetch.append(name_map[identifier].get("id"))
+                continue
+                
+            # If not found by exact match, try case-insensitive search in the local data
+            identifier_lower = identifier.lower()
+            found = False
+            
+            for server in all_servers:
+                if server.get("name", "").lower() == identifier_lower:
+                    server_ids_to_fetch.append(server.get("id"))
+                    found = True
+                    break
+                    
+            if not found:
+                # Server not found at all - we'll return None for this one
+                server_details[identifier] = None
+        
+        # Make one request per unique server ID we need to fully resolve
+        # This is still more efficient than one per identifier
+        for server_id in set(server_ids_to_fetch):
+            try:
+                server_data = self.get_server(server_id)
+                # Map this resolved server to all identifiers that match it
+                for identifier in identifiers:
+                    # Check if this identifier led to this server ID
+                    if identifier in id_map and id_map[identifier].get("id") == server_id:
+                        server_details[identifier] = server_data
+                    elif identifier in name_map and name_map[identifier].get("id") == server_id:
+                        server_details[identifier] = server_data
+                    else:
+                        # Search by lowercase name
+                        identifier_lower = identifier.lower()
+                        for server in all_servers:
+                            if server.get("name", "").lower() == identifier_lower and server.get("id") == server_id:
+                                server_details[identifier] = server_data
+                                break
+            except Exception:
+                # If we fail to get a specific server, continue with the next one
+                # Any identifiers that were supposed to use this server will remain unmapped
+                pass
+                
+        return server_details
+
 
 def convert_to_vscode_config(server_data: Dict[str, Any]) -> Dict[str, Any]:
     """
