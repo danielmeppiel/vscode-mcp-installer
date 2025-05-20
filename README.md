@@ -2,13 +2,14 @@
 
 A tool to verify and install MCP (Model Context Protocol) servers in Visual Studio Code from a MCP Registry. Click one of the buttons below to quickly install the MCP server in VS Code (Badges work for Unix systems - for Windows please read below):
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Docker-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=mcp-installer&config=%7B%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-v%22%2C%22%24%7Benv%3AHOME%7D%2FLibrary%2FApplication%20Support%2FCode%2FUser%2Fsettings.json%3A%2Froot%2F.config%2FCode%2FUser%2Fsettings.json%3Arw%22%2C%22ghcr.io%2Fdanielmeppiel%2Fvscode-mcp-installer%3Alatest%22%5D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Docker-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=mcp-installer&config=%7B%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-v%22%2C%22%24%7Benv%3AHOME%7D%2FLibrary%2FApplication%20Support%2FCode%2FUser%2Fsettings.json%3A%2Froot%2F.config%2FCode%2FUser%2Fsettings.json%3Arw%22%2C%22ghcr.io%2Fdanielmeppiel%2Fvscode-mcp-installer%3Alatest%22%5D%7D&quality=insiders)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Docker-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=mcp-installer&config=%7B%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-v%22%2C%22%24%7Benv%3AHOME%7D%2FLibrary%2FApplication%20Support%2FCode%2FUser%2Fsettings.json%3A%2Froot%2F.config%2FCode%2FUser%2Fsettings.json%3Arw%22%2C%22ghcr.io%2Fdanielmeppiel%2Fvscode-mcp-installer%3Alatest%22%5D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Docker-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=mcp-installer&config=%7B%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-v%22%2C%22%24%7Benv%3AHOME%7D%2FLibrary%2FApplication%20Support%2FCode%20-%20Insiders%2FUser%2Fsettings.json%3A%2Froot%2F.config%2FCode%2FUser%2Fsettings.json%3Arw%22%2C%22ghcr.io%2Fdanielmeppiel%2Fvscode-mcp-installer%3Alatest%22%5D%7D&quality=insiders)
 
 ## Table of Contents
 
 - [Setup](#setup)
 - [Usage](#usage)
   - [CLI Usage](#cli-usage)
+  - [MCP Configuration Files](#mcp-configuration-files)
   - [MCP Server Usage](#mcp-server-usage)
 - [Development](#development)
 - [Stack](#stack)
@@ -42,6 +43,11 @@ code-mcp registry show 428785c9-039e-47f6-9636-...     # Show details for a spec
 code-mcp registry install redis-mcp-server             # Install server by name
 code-mcp registry install 428785c9... --by-id          # Install server by ID
 
+# MCP Configuration commands
+code-mcp config install                                # Install servers from mcp.yml
+code-mcp config verify                                 # Verify servers in mcp.yml are installed
+code-mcp config init                                   # Create mcp.yml from installed servers
+
 # Without activating
 .venv/bin/code-mcp list
 .venv/bin/code-mcp check mcr.microsoft.com/mcp/server:1.0
@@ -53,6 +59,54 @@ By default this server will use the [Azure Community MCP Registry](https://demo.
 export MCP_REGISTRY_URL=https://your-mcp-registry.example.com
 code-mcp registry list
 ```
+
+### MCP Configuration Files
+
+The `code-mcp` tool supports managing MCP servers using configuration files, similar to dependency management tools like pipenv.
+
+#### Creating a Configuration File
+
+Create a `mcp.yml` file in your project root:
+
+```yaml
+version: "1.0"
+servers:
+  - "mcr.microsoft.com/mcp/python-lsp"
+  - "mcr.microsoft.com/mcp/typescript-lsp"
+  - "mcr.microsoft.com/mcp/nodejs"
+```
+
+#### Installing Servers from Configuration
+
+To install all servers defined in the configuration file:
+
+```bash
+code-mcp config install
+```
+
+Use the `--no-interactive` flag to skip prompting for environment variables:
+
+```bash
+code-mcp config install --no-interactive
+```
+
+#### Verifying Configuration
+
+Check if all servers in the configuration file are installed:
+
+```bash
+code-mcp config verify
+```
+
+#### Generating Configuration from Installed Servers
+
+Create a configuration file from currently installed servers:
+
+```bash
+code-mcp config init --output mcp.yml
+```
+
+Environment variables for MCP servers will be prompted during installation in interactive mode. Sensitive values like tokens and passwords are hidden during input.
 
 ### MCP Server Usage
 

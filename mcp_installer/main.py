@@ -7,8 +7,11 @@ are installed in VSCode's settings.
 """
 
 import sys
+import time
+import threading
+import itertools
 from pathlib import Path
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 
 # Use commentjson to parse JSON with comments
 try:
@@ -70,8 +73,8 @@ def extract_mcp_servers(settings_path: Path) -> Set[str]:
                 if docker_image:
                     mcp_servers.add(docker_image)
                 else:
-                    # Fallback if we couldn't extract the image name
-                    mcp_servers.add(f"{server_name} ({command})")
+                    # Fallback if we couldn't extract the image name - just use the server name
+                    mcp_servers.add(server_name)
             
             elif command == "npx" and "args" in config:
                 # For NPM packages, extract the package name
@@ -79,14 +82,13 @@ def extract_mcp_servers(settings_path: Path) -> Set[str]:
                 if npm_package:
                     mcp_servers.add(npm_package)
                 else:
-                    # Fallback if we couldn't extract the package name
-                    mcp_servers.add(f"{server_name} ({command})")
+                    # Fallback if we couldn't extract the package name - just use the server name
+                    mcp_servers.add(server_name)
             
             else:
                 # For any other server type
-                server_identifier = f"{server_name} ({command})"
-                mcp_servers.add(server_identifier)
-    
+                mcp_servers.add(server_name)
+
     return mcp_servers
 
 def extract_docker_image(args: List[str]) -> str:
@@ -464,5 +466,294 @@ def install_registry_server(identifier, by_id):
         click.secho(f"Error: {e}", fg="red", err=True)
 
 
-if __name__ == "__main__":
-    cli()
+@cli.group('config')
+def config_commands():
+    """Commands for working with MCP configuration files."""
+    pass
+
+
+@config_commands.command('install')
+@click.option('--config-file', default='mcp.yml', help='Path to MCP config file')
+@click.option('--no-interactive', is_flag=True, help='Do not prompt for environment variables')
+def install_from_config(config_file, no_interactive):
+    """Install MCP servers from a configuration file."""
+    try:
+        import os
+        import time
+        import threading
+        import itertools
+        from mcp_installer.config import find_mcp_config_file, load_mcp_config, install_server_from_registry, resolve_servers_from_registry_batch
+        from mcp_installer.registry import MCPRegistryClient, get_registry_url
+        
+        # Find the config file
+        config_path = Path(config_file) if os.path.exists(config_file) else find_mcp_config_file(config_file)
+        
+        if not config_path:
+            click.secho(f"Could not find MCP config file: {config_file}", fg="red")
+            sys.exit(1)
+            
+        click.secho(f"Using MCP config file: {config_path}", fg="green")
+        
+        # Load the config
+        config = load_mcp_config(config_path)
+        
+        if "servers" not in config or not config["servers"]:
+            click.secho("No servers defined in config file", fg="yellow")
+            sys.exit(0)
+        
+        # Set up registry client
+        registry_url = get_registry_url()
+        click.secho(f"Using MCP Registry: {registry_url}", fg="green")
+        registry_client = MCPRegistryClient(registry_url)
+        
+        # Find VSCode settings
+        vscode_settings_path = find_settings_file()
+        
+        # Set up progress spinner
+        done_loading = False
+        def spinner_task():
+            spinner = itertools.cycle(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'])
+            while not done_loading:
+                click.echo(f"\r{next(spinner)} Loading server data...", nl=False)
+                time.sleep(0.1)
+            # Clear the spinner line when done
+            click.echo("\r" + " " * 40 + "\r", nl=False)
+            
+        # Start spinner in background thread
+        spinner_thread = threading.Thread(target=spinner_task)
+        spinner_thread.daemon = True
+        spinner_thread.start()
+        
+        try:
+            # Pre-fetch all server details in one batch operation
+            server_identifiers = config["servers"]
+            server_details = resolve_servers_from_registry_batch(registry_client, server_identifiers)
+        finally:
+            # Stop the spinner
+            done_loading = True
+            spinner_thread.join(0.5)
+        
+        # Install each server
+        success_count = 0
+        
+        for server_id in server_identifiers:
+            # Initialize server_data to None
+            server_data = server_details.get(server_id)
+            
+            if server_data:
+                # Get server name from registry data
+                registry_name = server_data.get("name", "")
+                server_name = registry_name.split("/")[-1] if "/" in registry_name else registry_name
+                
+                click.secho(f"\nInstalling server: {server_name}", fg="green")
+                click.secho(f"  ID: {server_data.get('id')}", fg="blue")
+                
+                # Convert to VSCode configuration
+                try:
+                    from mcp_installer.registry import convert_to_vscode_config
+                    vscode_config = convert_to_vscode_config(server_data)
+                    
+                    # If in interactive mode and env vars are present, prompt for values
+                    if not no_interactive and "env" in vscode_config:
+                        click.secho("\nEnvironment Variables:", fg="yellow")
+                        for env_name in vscode_config["env"].keys():
+                            env_hidden = any(keyword in env_name.upper() for keyword in ["TOKEN", "SECRET", "KEY", "PASSWORD", "PASS"])
+                            
+                            # Check if already set in environment
+                            default_value = os.environ.get(env_name, "")
+                            
+                            # Prompt user
+                            env_value = click.prompt(
+                                f"  {env_name}", 
+                                default=default_value,
+                                hide_input=env_hidden,
+                                show_default=not env_hidden and bool(default_value)
+                            )
+                            
+                            vscode_config["env"][env_name] = env_value
+                    
+                    # Install in VSCode settings
+                    from mcp_installer.registry import install_server_in_vscode
+                    result = install_server_in_vscode(vscode_config)
+                    if result.returncode == 0:
+                        click.secho(f"Server '{server_name}' installed successfully", fg="green")
+                        success_count += 1
+                    else:
+                        click.secho(f"Failed to install server: {result.stderr}", fg="red")
+                except Exception as e:
+                    click.secho(f"Error installing server: {e}", fg="red")
+            else:
+                click.secho(f"Error resolving server: {server_id}", fg="red")
+                
+        click.secho(f"\nInstalled {success_count} of {len(server_identifiers)} servers", fg="green")
+        
+    except Exception as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+        sys.exit(1)
+
+
+@config_commands.command('verify')
+@click.option('--config-file', default='mcp.yml', help='Path to MCP config file')
+def verify_config(config_file):
+    """Verify that required MCP servers from config are installed."""
+    try:
+        import os
+        import time
+        import threading
+        import itertools
+        from mcp_installer.config import find_mcp_config_file, load_mcp_config, resolve_servers_from_registry_batch
+        from mcp_installer.registry import MCPRegistryClient, get_registry_url
+        
+        # Find the config file
+        config_path = Path(config_file) if os.path.exists(config_file) else find_mcp_config_file(config_file)
+        
+        if not config_path:
+            click.secho(f"Could not find MCP config file: {config_file}", fg="red")
+            sys.exit(1)
+            
+        click.secho(f"Using MCP config file: {config_path}", fg="green")
+        
+        # Load the config
+        config = load_mcp_config(config_path)
+        
+        if "servers" not in config or not config["servers"]:
+            click.secho("No servers defined in config file", fg="yellow")
+            sys.exit(0)
+        
+        # Set up registry client
+        registry_url = get_registry_url()
+        registry_client = MCPRegistryClient(registry_url)
+        
+        # Set up progress spinner
+        done_loading = False
+        def spinner_task():
+            spinner = itertools.cycle(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'])
+            while not done_loading:
+                click.echo(f"\r{next(spinner)} Checking {len(config['servers'])} MCP servers...", nl=False)
+                time.sleep(0.1)
+            # Clear the spinner line when done
+            click.echo("\r" + " " * 40 + "\r", nl=False)
+            
+        # Start spinner in background thread
+        spinner_thread = threading.Thread(target=spinner_task)
+        spinner_thread.daemon = True
+        spinner_thread.start()
+        
+        try:
+            # Find VSCode settings
+            vscode_settings_path = find_settings_file()
+            installed_servers = extract_mcp_servers(vscode_settings_path)
+            
+            # Get all server details in one batch operation for better performance
+            server_identifiers = config["servers"]
+            
+            server_details = resolve_servers_from_registry_batch(registry_client, server_identifiers)
+            
+            # Check which servers are missing
+            missing_servers = []
+            
+            # For debugging, let's print a summary of installed servers
+            click.secho(f"\nInstalled servers: {len(installed_servers)}", fg="blue")
+            
+            for server_id, server_data in server_details.items():
+                if server_data is None:
+                    # This should not happen due to how resolve_servers_from_registry_batch works,
+                    # but we keep it as a safety check
+                    missing_servers.append(server_id)
+                    continue
+                    
+                # Find all package identifiers for this server
+                packages = server_data.get("packages", [])
+                found = False
+                
+                # First check if the server name or identifier itself is in the installed servers
+                registry_name = server_data.get("name", "")
+                server_name = registry_name.split("/")[-1] if "/" in registry_name else registry_name
+                
+                # Also check for server name with the command appended
+                server_name_with_npx = f"{server_name} (npx)"
+                
+                if server_name in installed_servers:
+                    found = True
+                elif registry_name in installed_servers:
+                    found = True
+                elif server_name_with_npx in installed_servers:
+                    found = True
+                else:
+                    # Also check the short name of the registry package for NPM packages
+                    registry_short_name = server_name.lower() if server_name else ""
+                    server_name_lowercase = server_name.lower() if server_name else ""
+                    registry_name_lowercase = registry_name.lower() if registry_name else ""
+                    
+                    # Search with case insensitivity for more flexible matching
+                    installed_servers_lowercase = {s.lower() for s in installed_servers}
+                    
+                    if server_name_lowercase in installed_servers_lowercase:
+                        found = True
+                    elif registry_name_lowercase in installed_servers_lowercase:
+                        found = True
+                    elif f"figma-{server_name_lowercase}" in installed_servers_lowercase:
+                        # Special case handling for figma context servers
+                        found = True
+                    else:
+                        # If not found by name, check each package
+                        for pkg in packages:
+                            name = pkg.get("name")
+                            name_lowercase = name.lower() if name else ""
+                            if name and name_lowercase in installed_servers_lowercase:
+                                found = True
+                                break
+                
+                if not found:
+                    missing_servers.append(server_id)
+        finally:
+            # Stop the spinner
+            done_loading = True
+            spinner_thread.join(0.5)  # Wait for spinner to clean up
+        
+        # Report results
+        if missing_servers:
+            click.secho("\nMissing MCP servers:", fg="red")
+            for server in missing_servers:
+                click.secho(f"  - {server}", fg="red")
+            sys.exit(1)
+        
+        click.secho("\nAll required MCP servers are installed", fg="green")
+        sys.exit(0)
+        
+    except Exception as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+        sys.exit(1)
+
+
+@config_commands.command('init')
+@click.option('--output', default='mcp.yml', help='Output file path')
+def init_config(output):
+    """Initialize a new MCP config file from installed servers."""
+    try:
+        import yaml
+        
+        # Find VSCode settings
+        vscode_settings_path = find_settings_file()
+        installed_servers = extract_mcp_servers(vscode_settings_path)
+        
+        if not installed_servers:
+            click.secho("No MCP servers installed in VSCode", fg="yellow")
+            sys.exit(0)
+        
+        # Create config
+        config = {
+            "version": "1.0",
+            "servers": list(installed_servers)
+        }
+        
+        # Write config file
+        with open(output, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            
+        click.secho(f"Created MCP config file: {output}", fg="green")
+        click.secho(f"Found {len(installed_servers)} installed servers", fg="green")
+        
+    except Exception as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+        sys.exit(1)

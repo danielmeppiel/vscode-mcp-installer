@@ -99,7 +99,7 @@ def test_extract_mcp_servers_with_non_docker():
         # Test extraction
         result = extract_mcp_servers(Path(temp_path))
         assert "@azure/mcp" in result
-        assert "custom-server (uvx)" in result
+        assert "custom-server" in result
         assert len(result) == 2
     finally:
         # Clean up
@@ -142,7 +142,7 @@ def test_extract_mcp_servers_mixed_config():
         result = extract_mcp_servers(Path(temp_path))
         assert "ghcr.io/github/github-mcp-server" in result
         assert "@azure/mcp" in result
-        assert "empty-server (unknown)" in result
+        assert "empty-server" in result
         assert len(result) == 3
     finally:
         # Clean up
