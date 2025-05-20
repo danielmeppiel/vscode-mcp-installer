@@ -6,10 +6,15 @@ This tool checks if the required MCP servers (specified by Docker image strings)
 are installed in VSCode's settings.
 """
 
-import json
 import sys
 from pathlib import Path
 from typing import List, Dict, Set
+
+# Use commentjson to parse JSON with comments
+try:
+    import commentjson as json
+except ImportError:
+    import json
 
 import click
 
@@ -36,8 +41,19 @@ def extract_mcp_servers(settings_path: Path) -> Set[str]:
     Identifies each MCP server based on its configuration and returns a set
     of server identifiers.
     """
+    # Read the file and strip out any comments (for JSONC support)
     with open(settings_path, 'r') as f:
-        settings = json.load(f)
+        content = f.read()
+    
+    # Remove single-line comments
+    import re
+    content = re.sub(r'//.*$', '', content, flags=re.MULTILINE)
+    
+    # Now parse the JSON
+    try:
+        settings = json.loads(content)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to parse settings file: {e}") from e
     
     mcp_servers = set()
     
