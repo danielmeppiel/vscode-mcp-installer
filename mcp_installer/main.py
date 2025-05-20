@@ -209,5 +209,244 @@ def list_servers():
         click.secho(f"Error: {e}", fg="red", err=True)
 
 
+# Registry-related commands
+@cli.group('registry')
+def registry():
+    """Commands to interact with the MCP Registry."""
+    pass
+
+
+@registry.command('list')
+@click.option('--limit', default=30, help='Maximum number of entries to return')
+@click.option('--cursor', help='Pagination cursor for retrieving next set of results')
+def list_registry_servers(limit, cursor):
+    """List available MCP servers from the registry."""
+    try:
+        # Import here to avoid circular imports
+        from mcp_installer.registry import MCPRegistryClient, get_registry_url
+        
+        registry_url = get_registry_url()
+        click.secho(f"Using MCP Registry: {registry_url}", fg="green")
+        
+        client = MCPRegistryClient(registry_url)
+        results = client.list_servers(limit=limit, cursor=cursor)
+        
+        servers = results.get("servers", [])
+        metadata = results.get("metadata", {})
+        
+        if servers:
+            click.secho("\nMCP Registry Servers:", fg="green")
+            for server in servers:
+                name = server.get("name", "Unknown")
+                server_id = server.get("id", "")
+                description = server.get("description", "")
+                
+                # Truncate long descriptions
+                if len(description) > 100:
+                    description = description[:97] + "..."
+                    
+                click.secho(f"\nServer: {name}", fg="blue", bold=True)
+                click.secho(f"  ID: {server_id}", fg="cyan")
+                click.secho(f"  Description: {description}", fg="cyan")
+                
+            click.secho(f"\nTotal: {len(servers)} servers", fg="green")
+            
+            # Show pagination info
+            next_cursor = metadata.get("next_cursor")
+            if next_cursor:
+                click.secho(f"\nFor more results, run with --cursor={next_cursor}", fg="yellow")
+        else:
+            click.secho("No MCP servers found in the registry", fg="yellow")
+            
+    except Exception as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+
+
+@registry.command('search')
+@click.argument('query')
+def search_registry_servers(query):
+    """Search for MCP servers in the registry by name or description."""
+    try:
+        # Import here to avoid circular imports
+        from mcp_installer.registry import MCPRegistryClient, get_registry_url
+        
+        registry_url = get_registry_url()
+        click.secho(f"Using MCP Registry: {registry_url}", fg="green")
+        click.secho(f"Searching for: '{query}'", fg="green")
+        
+        client = MCPRegistryClient(registry_url)
+        servers = client.search_servers(query)
+        
+        if servers:
+            click.secho(f"\nFound {len(servers)} matching servers:", fg="green")
+            for server in servers:
+                name = server.get("name", "Unknown")
+                server_id = server.get("id", "")
+                description = server.get("description", "")
+                
+                # Truncate long descriptions
+                if len(description) > 100:
+                    description = description[:97] + "..."
+                    
+                click.secho(f"\nServer: {name}", fg="blue", bold=True)
+                click.secho(f"  ID: {server_id}", fg="cyan")
+                click.secho(f"  Description: {description}", fg="cyan")
+        else:
+            click.secho(f"No servers found matching '{query}'", fg="yellow")
+            
+    except Exception as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+
+
+@registry.command('show')
+@click.argument('server_id')
+def show_server_details(server_id):
+    """Get detailed information about a specific MCP server."""
+    try:
+        # Import here to avoid circular imports
+        from mcp_installer.registry import MCPRegistryClient, get_registry_url
+        
+        registry_url = get_registry_url()
+        click.secho(f"Using MCP Registry: {registry_url}", fg="green")
+        
+        client = MCPRegistryClient(registry_url)
+        server_data = client.get_server(server_id)
+        
+        # Display server information
+        name = server_data.get("name", "Unknown")
+        description = server_data.get("description", "")
+        
+        click.secho(f"\nServer: {name}", fg="blue", bold=True)
+        click.secho(f"ID: {server_id}", fg="cyan")
+        click.secho(f"Description: {description}", fg="cyan")
+        
+        # Display repository information
+        repo = server_data.get("repository", {})
+        if repo:
+            click.secho("\nRepository:", fg="green")
+            click.secho(f"  URL: {repo.get('url', 'N/A')}", fg="cyan")
+            click.secho(f"  Source: {repo.get('source', 'N/A')}", fg="cyan")
+        
+        # Display version information
+        version = server_data.get("version_detail", {})
+        if version:
+            click.secho("\nVersion:", fg="green")
+            click.secho(f"  Version: {version.get('version', 'N/A')}", fg="cyan")
+            click.secho(f"  Release Date: {version.get('release_date', 'N/A')}", fg="cyan")
+            click.secho(f"  Latest: {version.get('is_latest', False)}", fg="cyan")
+        
+        # Display package information
+        packages = server_data.get("packages", [])
+        if packages:
+            click.secho("\nPackages:", fg="green")
+            for i, pkg in enumerate(packages):
+                registry_name = pkg.get("registry_name", "unknown")
+                name = pkg.get("name", "N/A")
+                version = pkg.get("version", "N/A")
+                
+                click.secho(f"\n  Package {i+1}: {name}", fg="blue")
+                click.secho(f"    Registry: {registry_name}", fg="cyan")
+                click.secho(f"    Version: {version}", fg="cyan")
+                
+                # Display arguments
+                args = pkg.get("package_arguments", [])
+                if args:
+                    click.secho("    Arguments:", fg="cyan")
+                    for arg in args:
+                        arg_desc = arg.get("description", "")
+                        arg_value = arg.get("value", "")
+                        click.secho(f"      - {arg_desc}: {arg_value}", fg="white")
+                
+                # Display environment variables
+                env_vars = pkg.get("environment_variables", [])
+                if env_vars:
+                    click.secho("    Environment Variables:", fg="cyan")
+                    for env in env_vars:
+                        env_name = env.get("name", "")
+                        env_desc = env.get("description", "")
+                        click.secho(f"      - {env_name}: {env_desc}", fg="white")
+                        
+    except Exception as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+
+
+@registry.command('install')
+@click.argument('identifier')
+@click.option('--by-id', is_flag=True, help='Interpret the identifier as a server ID')
+def install_registry_server(identifier, by_id):
+    """
+    Install an MCP server from the registry to VS Code.
+    
+    IDENTIFIER can be either a server name or ID (with --by-id flag).
+    """
+    try:
+        # Import here to avoid circular imports
+        from mcp_installer.registry import (
+            MCPRegistryClient, 
+            get_registry_url, 
+            convert_to_vscode_config, 
+            install_server_in_vscode
+        )
+        
+        registry_url = get_registry_url()
+        click.secho(f"Using MCP Registry: {registry_url}", fg="green")
+        
+        client = MCPRegistryClient(registry_url)
+        
+        # Find server by ID or name
+        server_data = None
+        if by_id:
+            server_id = identifier
+            click.secho(f"Looking up server by ID: {server_id}", fg="green")
+            server_data = client.get_server(server_id)
+        else:
+            # Find by name
+            click.secho(f"Searching for server by name: {identifier}", fg="green")
+            servers = client.search_servers(identifier)
+            
+            if not servers:
+                click.secho(f"No servers found matching '{identifier}'", fg="red")
+                return
+                
+            if len(servers) > 1:
+                click.secho(f"Multiple servers found matching '{identifier}':", fg="yellow")
+                for i, server in enumerate(servers):
+                    click.secho(f"  {i+1}. {server.get('name')} (ID: {server.get('id')})", fg="yellow")
+                click.secho("\nPlease use --by-id flag with the specific server ID", fg="yellow")
+                return
+                
+            # Use the first (and only) match
+            server_data = client.get_server(servers[0]["id"])
+        
+        if not server_data:
+            click.secho("Server not found", fg="red")
+            return
+            
+        # Convert registry data to VS Code configuration
+        server_name = server_data.get("name", "")
+        click.secho(f"Installing server: {server_name}", fg="green")
+        
+        vscode_config = convert_to_vscode_config(server_data)
+        
+        # Show the configuration
+        click.secho("\nVS Code configuration:", fg="green")
+        click.secho(json.dumps(vscode_config, indent=2), fg="cyan")
+        
+        # Confirm installation
+        if click.confirm("Do you want to install this server?"):
+            # Install the server
+            result = install_server_in_vscode(vscode_config)
+            click.secho(f"\nServer installed successfully: {server_name}", fg="green")
+            
+            if result.stdout:
+                click.secho("\nOutput:", fg="green")
+                click.secho(result.stdout, fg="white")
+        else:
+            click.secho("Installation cancelled", fg="yellow")
+            
+    except Exception as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+
+
 if __name__ == "__main__":
     cli()
