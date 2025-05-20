@@ -159,6 +159,11 @@ For Windows, use this configuration:
 |------|-------------|------------|
 | `list_servers` | List all MCP servers installed in VS Code | None |
 | `check_servers` | Check if specific MCP servers are installed in VS Code | `servers`: List of server identifiers to check |
+| `list_available_servers` | List available MCP servers from the MCP Registry | `limit`: Maximum number of entries to return (default: 30)<br>`cursor`: Pagination cursor for retrieving next set of results |
+| `get_server_details` | Get detailed information about a specific MCP server | `server_id`: Unique identifier of the server |
+| `search_servers` | Search for MCP servers by name or description | `query`: Search query string (case-insensitive) |
+| `install_server` | Install an MCP server from the registry to VS Code | `server_id`: Unique identifier of the server to install<br>`server_name`: Name of the server to search for and install |
+| `get_registry_info` | Show information about the current MCP Registry | None |
 
 Example responses:
 
@@ -180,6 +185,68 @@ Example responses:
 }
 ```
 
+**list_available_servers**:
+```json
+{
+  "registry_url": "https://demo.registry.azure-mcp.net",
+  "servers": [
+    {"id": "428785c9-039e-47f6-9636-...", "name": "redis-mcp-server", "description": "..."},
+    {"id": "92a1f82c-8f7d-4a3e-...", "name": "postgres-mcp-server", "description": "..."}
+  ],
+  "next_cursor": "eyJwayI6IlBBUlRJV..."
+}
+```
+
+**get_server_details**:
+```json
+{
+  "registry_url": "https://demo.registry.azure-mcp.net",
+  "id": "428785c9-039e-47f6-9636-...",
+  "name": "redis-mcp-server",
+  "description": "MCP server for Redis database operations",
+  "version": "1.0.0",
+  "vscode_config": {
+    "command": "docker",
+    "args": ["run", "-i", "--rm", "mcr.microsoft.com/mcp/redis:1.0"]
+  }
+}
+```
+
+**search_servers**:
+```json
+{
+  "registry_url": "https://demo.registry.azure-mcp.net",
+  "query": "redis",
+  "count": 1,
+  "servers": [
+    {"id": "428785c9-039e-47f6-9636-...", "name": "redis-mcp-server", "description": "..."}
+  ]
+}
+```
+
+**install_server**:
+```json
+{
+  "success": true,
+  "message": "Installed 'redis-mcp-server' successfully",
+  "server_id": "428785c9-039e-47f6-9636-...",
+  "registry_url": "https://demo.registry.azure-mcp.net",
+  "vscode_config": {
+    "command": "docker",
+    "args": ["run", "-i", "--rm", "mcr.microsoft.com/mcp/redis:1.0"]
+  }
+}
+```
+
+**get_registry_info**:
+```json
+{
+  "registry_url": "https://demo.registry.azure-mcp.net",
+  "status": "online",
+  "health_check": {"status": "ok", "version": "1.0.0"},
+  "message": "MCP Registry is accessible"
+}
+```
 ## Development
 
 ```zsh
